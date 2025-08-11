@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -348,19 +347,17 @@
                 loadingIndicator.classList.add('visible');
                 loadingIndicator.textContent = 'AI 辨識中…';
 
-                // --- START: 已根據您的要求修改 ---
-                
-                // API URL 指向我們在 Cloudflare Pages 上建立的代理 Function
-                // 這是一個相對路徑，它會指向同一個網域下的 /api/proxy
-                const API_URL = 'https://my-gemini-proxy.kenchan20131.workers.dev/';
-                const MODEL_NAME = 'gemini-1.5-flash-latest';
+                const API_KEY = 'AIzaSyDOb4XoKIvFW9kpiRO8KSzIx6XCSQ4Rcvo';
+                const MODEL_NAME = 'gemini-1.5-flash-latest'; // 使用推薦的模型名稱以確保可用性
+                const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
                 
                 const promptText = "這是一張含有手寫文字的圖片。請精確地辨識並提取圖片中的所有繁體中文字。請只回傳辨識出的文字內容，不要添加任何解釋、標題或額外的格式。";
                 
                 const pureBase64 = currentImageBase64.split(',')[1];
 
-                // 這是要傳送給 Google Gemini API 的原始請求主體
-                const geminiRequestBody = {
+                // --- START: 已根據您的要求修改 ---
+                // 建立符合 Gemini API 格式的請求主體，並加入 temperature 設定
+                const requestBody = {
                   "contents": [{
                     "parts": [
                       { "text": promptText },
@@ -376,13 +373,7 @@
                     "temperature": 0.5
                   }
                 };
-
-                // 建立一個新的請求主體，發送給我們的代理 Function
-                // 代理 Function 會解析這個結構，並將 `data` 部分轉發給 Google
-                const proxyRequestBody = {
-                    model: MODEL_NAME,
-                    data: geminiRequestBody
-                };
+                // --- END: 修改結束 ---
 
                 try {
                     const response = await fetch(API_URL, {
@@ -390,10 +381,8 @@
                         headers: { 
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(proxyRequestBody) // 發送包含模型和資料的結構到代理
+                        body: JSON.stringify(requestBody)
                     });
-
-                // --- END: 修改結束 ---
 
                     if (!response.ok) {
                         const errorText = await response.text();
