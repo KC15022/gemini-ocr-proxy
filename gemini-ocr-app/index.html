@@ -347,64 +347,39 @@
                 loadingIndicator.classList.add('visible');
                 loadingIndicator.textContent = 'AI 辨識中…';
 
-                const API_KEY = 'AIzaSyDOb4XoKIvFW9kpiRO8KSzIx6XCSQ4Rcvo';
-                const MODEL_NAME = 'gemini-1.5-flash-latest'; // 使用推薦的模型名稱以確保可用性
-                const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
-                
-                const promptText = "這是一張含有手寫文字的圖片。請精確地辨識並提取圖片中的所有繁體中文字。請只回傳辨識出的文字內容，不要添加任何解釋、標題或額外的格式。";
-                
+                // !重要修改：API URL 指向您在 Netlify 上的後端函式
+                // Netlify 會自動將 /.netlify/functions/檔名 的路徑對應到您的函式
+                const YOUR_BACKEND_API_URL = '/.netlify/functions/recognize'; 
+
                 const pureBase64 = currentImageBase64.split(',')[1];
 
-                // --- START: 已根據您的要求修改 ---
-                // 建立符合 Gemini API 格式的請求主體，並加入 temperature 設定
+                // 請求主體現在只需要包含圖片數據即可
                 const requestBody = {
-                  "contents": [{
-                    "parts": [
-                      { "text": promptText },
-                      {
-                        "inline_data": {
-                          "mime_type": "image/jpeg",
-                          "data": pureBase64
-                        }
-                      }
-                    ]
-                  }],
-                  "generationConfig": {
-                    "temperature": 0.5
-                  }
+                    "imageData": pureBase64
                 };
-                // --- END: 修改結束 ---
 
                 try {
-                    const response = await fetch(API_URL, {
+                    // !重要修改：現在是向您自己的後端代理發送請求
+                    const response = await fetch(YOUR_BACKEND_API_URL, {
                         method: 'POST',
-                        headers: { 
+                        headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify(requestBody)
                     });
 
                     if (!response.ok) {
-                        const errorText = await response.text();
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            const message = errorJson.error?.message || errorText;
-                            throw new Error(`API 請求失敗，狀態碼: ${response.status}. 回應: ${message}`);
-                        } catch (e) {
-                            throw new Error(`API 請求失敗，狀態碼: ${response.status}. 回應: ${errorText}`);
-                        }
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || '請求失敗');
                     }
 
                     const data = await response.json();
                     
-                    const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                    // 根據後端回傳的格式 { "text": "..." } 來獲取內容
+                    const content = data.text?.trim();
 
                     if (!content) {
-                        const blockReason = data.promptFeedback?.blockReason;
-                        if (blockReason) {
-                            throw new Error(`請求因「${blockReason}」而被阻擋。`);
-                        }
-                        throw new Error('API 回應內容為空或格式不符。');
+                        throw new Error('後端回傳的內容為空或格式不符。');
                     }
                     
                     ocrResult.textContent = content;
