@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>手寫中文字OCR工具 | Gemini AI</title>
-    <meta name="description" content="上傳一張手寫中文字的圖片，讓 AI 為您辨識內容。">
+    <meta name="description" content="上傳多張手寫中文字的圖片，讓 AI 依序為您辨識內容。">
     
     <!-- 引入字體 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -39,7 +39,7 @@
 
         #container {
             width: 100%;
-            max-width: 520px;
+            max-width: 600px; /* 稍微加寬以容納新設計 */
             background: rgba(255, 255, 255, 0.3);
             padding: 2rem;
             border: 1px solid var(--border-color);
@@ -78,28 +78,37 @@
             transition: all 0.3s ease;
             overflow: hidden;
             box-sizing: border-box;
+            background-color: rgba(255,255,255,0.1);
         }
         
         #image-input-area.has-image {
-            min-height: 0;
+            min-height: auto; /* 調整高度以適應內容 */
             border: 1px solid var(--border-color);
             background: none;
+            padding: 1rem;
+            cursor: default;
         }
 
         #image-input-area:hover:not(.has-image) {
             border-color: var(--accent-color);
         }
 
-        #image-preview {
-            display: none;
+        /* NEW: 預覽容器 */
+        #preview-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
             width: 100%;
-            height: auto;
-            max-width: 100%;
-            transition: opacity 0.5s ease;
         }
 
-        #image-preview.visible {
-            display: block;
+        /* NEW: 預覽圖片縮圖 */
+        .preview-image {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
         }
 
         #upload-prompt {
@@ -168,10 +177,32 @@
             transition: opacity 1.5s ease;
             background-color: rgba(255,255,255,0.4);
             border-radius: 4px;
+            display: none; /* 預設隱藏 */
+            position: relative; /* 為了複製按鈕定位 */
         }
         
         #result-container.visible {
             opacity: 1;
+            display: block; /* 設為可見時顯示 */
+        }
+
+        /* NEW: 複製按鈕 */
+        #copy-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: 1px solid transparent;
+            color: var(--accent-color);
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        #copy-btn:hover {
+            color: var(--text-color);
+            background-color: rgba(0,0,0,0.05);
         }
         
         #ocr-result {
@@ -181,8 +212,9 @@
             line-height: 1.8;
             letter-spacing: 0.1em;
             color: var(--text-color);
-            white-space: pre-wrap;
+            white-space: pre-wrap; /* 保持換行符 */
             margin: 0;
+            padding-right: 2rem; /* 避免文字與複製按鈕重疊 */
         }
         
         #loading-indicator {
@@ -205,24 +237,17 @@
         }
 
         .copyright-footer {
-            position: fixed;
-            bottom: 0;
-            right: 0;
-            padding: 5px 10px;
-            background-color: #f1f1f1;
-        }
-
-        .copyright-footer p {
-            margin: 0;
+            margin-top: 2rem;
             font-size: 14px;
+            color: var(--accent-color);
         }
 
         @media (max-width: 600px) {
             body { padding: 1rem; }
-            #container { padding: 1rem; }
+            #container { padding: 1.5rem; }
             h1 { font-size: 1.6rem; }
             .action-btn { padding: 8px 16px; font-size: 0.85rem; }
-            .copyright-footer p { font-size: 12px; }
+            .copyright-footer { font-size: 12px; }
         }
     </style>
 </head>
@@ -230,25 +255,33 @@
 
     <div id="container">
         <h1>手寫中文字辨識</h1>
-        <p id="subtitle">上傳圖片，讓 AI 辨識圖中的手寫文字</p>
+        <p id="subtitle">上傳一張或多張圖片，AI 將依序辨識</p>
 
         <!-- 圖片上傳區域 -->
         <div id="image-input-area">
-            <img id="image-preview" src="" alt="圖片預覽">
+             <!-- NEW: 預覽容器 -->
+            <div id="preview-container"></div>
             <div id="upload-prompt">
                 <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                 </svg>
-                <p>點擊此處選擇檔案</p>
+                <p>點擊此處選擇檔案 (可多選)</p>
             </div>
         </div>
         
-        <!-- 隱藏的 input 元素 -->
-        <input type="file" id="file-input" accept="image/*">
+        <!-- 隱藏的 input 元素 (NEW: 新增 multiple) -->
+        <input type="file" id="file-input" accept="image/*" multiple>
         <input type="file" id="camera-input" accept="image/*" capture="environment">
 
         <!-- 操作按鈕 -->
         <div id="action-buttons">
+            <button id="upload-btn" class="action-btn">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-upload" viewBox="0 0 16 16">
+                  <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                  <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                </svg>
+                <span>選擇檔案</span>
+            </button>
             <button id="camera-btn" class="action-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
                     <path d="M10.5 8.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
@@ -261,6 +294,14 @@
         
         <!-- 結果顯示區域 -->
         <div id="result-container">
+            <!-- NEW: 複製按鈕 -->
+            <button id="copy-btn" title="複製全文">
+                <svg id="copy-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zM9 2H7v.5a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5V2z"/>
+                </svg>
+                <span id="copy-btn-text" style="display: none;">已複製!</span>
+            </button>
             <p id="ocr-result"></p>
         </div>
 
@@ -268,50 +309,83 @@
         <div id="loading-indicator">辨識中…</div>
     </div>
 
+    <footer class="copyright-footer">
+        <p>Copyright © 2025 陳冠健. All rights reserved.</p>
+    </footer>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // 獲取所有需要的 DOM 元素
             const imageInputArea = document.getElementById('image-input-area');
             const fileInput = document.getElementById('file-input');
             const cameraInput = document.getElementById('camera-input');
+            const uploadBtn = document.getElementById('upload-btn');
             const cameraBtn = document.getElementById('camera-btn');
             const recognizeBtn = document.getElementById('recognize-btn');
-            const imagePreview = document.getElementById('image-preview');
+            const previewContainer = document.getElementById('preview-container');
             const uploadPrompt = document.getElementById('upload-prompt');
             const resultContainer = document.getElementById('result-container');
             const ocrResult = document.getElementById('ocr-result');
             const loadingIndicator = document.getElementById('loading-indicator');
+            const copyBtn = document.getElementById('copy-btn');
+            const copyBtnText = document.getElementById('copy-btn-text');
+            const copyIcon = document.getElementById('copy-icon');
 
-            let currentImageBase64 = null;
+            let selectedImages = []; // NEW: 儲存多張圖片的 Base64
 
             // --- 事件監聽 ---
             imageInputArea.addEventListener('click', () => fileInput.click());
+            uploadBtn.addEventListener('click', () => fileInput.click());
             cameraBtn.addEventListener('click', () => cameraInput.click());
             fileInput.addEventListener('change', handleFileSelect);
             cameraInput.addEventListener('change', handleFileSelect);
             recognizeBtn.addEventListener('click', recognizeText);
+            copyBtn.addEventListener('click', copyResultToClipboard);
 
             // --- 核心功能函數 ---
             function handleFileSelect(event) {
-                const file = event.target.files[0];
-                if (!file) return;
+                const files = event.target.files;
+                if (!files || files.length === 0) return;
 
+                // 重置狀態
+                selectedImages = [];
+                previewContainer.innerHTML = '';
                 resultContainer.classList.remove('visible');
                 loadingIndicator.classList.add('visible');
-                loadingIndicator.textContent = '壓縮圖片中…';
+                loadingIndicator.textContent = `處理圖片中 (0/${files.length})...`;
+                
+                uploadPrompt.classList.add('hidden');
+                imageInputArea.classList.add('has-image');
+                imageInputArea.style.cursor = 'default';
 
-                resizeImage(file, 1024, 0.9, (base64) => {
-                    currentImageBase64 = base64;
-                    imagePreview.src = base64;
-                    imagePreview.classList.add('visible');
-                    uploadPrompt.classList.add('hidden');
-                    imageInputArea.classList.add('has-image');
-                    recognizeBtn.disabled = false;
-                    recognizeBtn.textContent = '開始辨識';
-                    loadingIndicator.classList.remove('visible');
+                let processedCount = 0;
+                
+                // 使用 Array.from 將 FileList 轉為陣列以使用 forEach
+                Array.from(files).forEach((file, index) => {
+                    resizeImage(file, 1024, 0.9, (base64) => {
+                        // 確保依序處理
+                        selectedImages[index] = base64;
+                        
+                        // 建立並顯示縮圖
+                        const imgElement = document.createElement('img');
+                        imgElement.src = base64;
+                        imgElement.classList.add('preview-image');
+                        imgElement.alt = `預覽圖 ${index + 1}`;
+                        previewContainer.appendChild(imgElement);
+
+                        processedCount++;
+                        loadingIndicator.textContent = `處理圖片中 (${processedCount}/${files.length})...`;
+
+                        // 所有圖片處理完畢
+                        if (processedCount === files.length) {
+                            loadingIndicator.classList.remove('visible');
+                            recognizeBtn.disabled = false;
+                            recognizeBtn.textContent = '開始辨識';
+                        }
+                    });
                 });
             }
-
+            
             function resizeImage(file, maxSize, quality, callback) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
@@ -336,57 +410,50 @@
             }
 
             async function recognizeText() {
-                if (!currentImageBase64) {
-                    alert('請先選擇一張圖片。');
+                if (selectedImages.length === 0) {
+                    alert('請先選擇至少一張圖片。');
                     return;
                 }
 
                 recognizeBtn.disabled = true;
-                recognizeBtn.textContent = '辨識中…';
                 resultContainer.classList.remove('visible');
                 loadingIndicator.classList.add('visible');
-                loadingIndicator.textContent = 'AI 辨識中…';
-
-                // *** 修改開始 ***
-                // 1. 移除 API_KEY 和完整的 API_URL
-                // const API_KEY = '...'; // <-- 刪除這一行！
-                // const API_URL = `...`; // <-- 刪除這一行！
-
-                // 2. 設定我們要呼叫的 Vercel 後端代理路徑
-                const PROXY_API_URL = '/api/recognize';
+                
+                let allRecognizedText = [];
 
                 try {
-                    // 3. 呼叫我們自己的後端代理 /api/recognize
-                    const response = await fetch(PROXY_API_URL, {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json'
-                        },
-                        // 4. Request body 只需要傳送圖片的 base64 字串
-                        body: JSON.stringify({ imageBase64: currentImageBase64 })
-                    });
+                    for (let i = 0; i < selectedImages.length; i++) {
+                        const imageBase64 = selectedImages[i];
+                        loadingIndicator.textContent = `AI 辨識中 (${i + 1}/${selectedImages.length})...`;
 
-                    // 5. 處理從我們後端代理回傳的 response
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        const errorMessage = errorData.error?.message || JSON.stringify(errorData);
-                        throw new Error(`API 請求失敗，狀態碼: ${response.status}. 回應: ${errorMessage}`);
-                    }
+                        const PROXY_API_URL = '/api/recognize'; // Vercel 後端代理路徑
+                        
+                        const response = await fetch(PROXY_API_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ imageBase64: imageBase64 })
+                        });
 
-                    const data = await response.json();
-                    
-                    const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-
-                    if (!content) {
-                        const blockReason = data.promptFeedback?.blockReason;
-                        if (blockReason) {
-                            throw new Error(`請求因「${blockReason}」而被阻擋。`);
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            const errorMessage = errorData.error?.message || JSON.stringify(errorData);
+                            throw new Error(`第 ${i+1} 張圖片 API 請求失敗: ${errorMessage}`);
                         }
-                        const errorMessage = data.error?.message || 'API 回應內容為空或格式不符。';
-                        throw new Error(errorMessage);
+
+                        const data = await response.json();
+                        const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+                        if (!content) {
+                            const blockReason = data.promptFeedback?.blockReason;
+                            if (blockReason) throw new Error(`第 ${i+1} 張圖片請求因「${blockReason}」而被阻擋。`);
+                            allRecognizedText.push(`[第 ${i + 1} 張圖片辨識失敗或無內容]`);
+                        } else {
+                            allRecognizedText.push(content);
+                        }
                     }
                     
-                    ocrResult.textContent = content;
+                    // NEW: 用兩個換行符 (空行) 連接每張圖片的結果
+                    ocrResult.textContent = allRecognizedText.join('\n\n');
                     resultContainer.classList.add('visible');
 
                 } catch (error) {
@@ -398,14 +465,27 @@
                     recognizeBtn.disabled = false;
                     recognizeBtn.textContent = '重新辨識';
                 }
-                // *** 修改結束 ***
+            }
+            
+            // NEW: 複製功能
+            function copyResultToClipboard() {
+                const textToCopy = ocrResult.textContent;
+                if (!textToCopy) return;
+
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    // 顯示成功提示
+                    copyIcon.style.display = 'none';
+                    copyBtnText.style.display = 'inline';
+                    setTimeout(() => {
+                        copyIcon.style.display = 'inline';
+                        copyBtnText.style.display = 'none';
+                    }, 2000); // 2秒後恢復原狀
+                }).catch(err => {
+                    console.error('複製失敗:', err);
+                    alert('複製失敗，您的瀏覽器可能不支援此功能。');
+                });
             }
         });
     </script>
-
-<footer class="copyright-footer">
-<p>Copyright © 2025 陳冠健. All rights reserved.</p>
-</footer>
-
 </body>
 </html>
