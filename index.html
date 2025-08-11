@@ -409,63 +409,84 @@
                 reader.readAsDataURL(file);
             }
 
-            async function recognizeText() {
-                if (selectedImages.length === 0) {
-                    alert('請先選擇至少一張圖片。');
-                    return;
-                }
+            // 【請使用這個全新的、完整的 recognizeText 函式來替換舊的】
+async function recognizeText() {
+    if (selectedImages.length === 0) {
+        alert('請先選擇至少一張圖片。');
+        return;
+    }
 
-                recognizeBtn.disabled = true;
-                resultContainer.classList.remove('visible');
-                loadingIndicator.classList.add('visible');
-                
-                let allRecognizedText = [];
+    recognizeBtn.disabled = true;
+    resultContainer.classList.remove('visible');
+    loadingIndicator.classList.add('visible');
+    
+    let allRecognizedText = [];
 
-                try {
-                    for (let i = 0; i < selectedImages.length; i++) {
-                        const imageBase64 = selectedImages[i];
-                        loadingIndicator.textContent = `AI 辨識中 (${i + 1}/${selectedImages.length})...`;
+    try {
+        for (let i = 0; i < selectedImages.length; i++) {
+            const imageBase64 = selectedImages[i];
+            loadingIndicator.textContent = `AI 辨識中 (${i + 1}/${selectedImages.length})...`;
 
-                        const PROXY_API_URL = '/api/recognize'; // Vercel 後端代理路徑
-                        
-                        const response = await fetch(PROXY_API_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ imageBase64: imageBase64 })
-                        });
+            const PROXY_API_URL = '/api/recognize'; // Vercel 後端代理路徑
+            
+            const response = await fetch(PROXY_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageBase64: imageBase64 })
+            });
 
-                        if (!response.ok) {
-                            const errorData = await response.json();
-                            const errorMessage = errorData.error?.message || JSON.stringify(errorData);
-                            throw new Error(`第 ${i+1} 張圖片 API 請求失敗: ${errorMessage}`);
-                        }
-
-                        const data = await response.json();
-                        const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-
-                        if (!content) {
-                            const blockReason = data.promptFeedback?.blockReason;
-                            if (blockReason) throw new Error(`第 ${i+1} 張圖片請求因「${blockReason}」而被阻擋。`);
-                            allRecognizedText.push(`[第 ${i + 1} 張圖片辨識失敗或無內容]`);
-                        } else {
-                            allRecognizedText.push(content);
-                        }
-                    }
-                    
-                    // NEW: 用兩個換行符 (空行) 連接每張圖片的結果
-                    ocrResult.textContent = allRecognizedText.join('\n\n');
-                    resultContainer.classList.add('visible');
-
-                } catch (error) {
-                    console.error('文字辨識時發生錯誤:', error);
-                    ocrResult.textContent = `辨識失敗，請稍後再試。\n錯誤訊息：${error.message}`;
-                    resultContainer.classList.add('visible');
-                } finally {
-                    loadingIndicator.classList.remove('visible');
-                    recognizeBtn.disabled = false;
-                    recognizeBtn.textContent = '重新辨識';
-                }
+            if (!response.ok) {
+                const errorData = await response.json();
+                const errorMessage = errorData.error?.message || JSON.stringify(errorData);
+                throw new Error(`第 ${i+1} 張圖片 API 請求失敗: ${errorMessage}`);
             }
+
+            const data = await response.json();
+            const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+            if (!content) {
+                const blockReason = data.promptFeedback?.blockReason;
+                if (blockReason) throw new Error(`第 ${i+1} 張圖片請求因「${blockReason}」而被阻擋。`);
+                allRecognizedText.push(`[第 ${i + 1} 張圖片辨識失敗或無內容]`);
+            } else {
+                allRecognizedText.push(content);
+            }
+        }
+        
+        // 將所有圖片的辨識結果用兩個換行符連接起來
+        const finalResultText = allRecognizedText.join('\n\n');
+        
+        // 在當前頁面顯示結果
+        ocrResult.textContent = finalResultText;
+        resultContainer.classList.add('visible');
+
+        // --- 【新增的核心邏輯】 ---
+        // 檢查這個視窗是否由其他視窗(window.opener)打開的
+        if (window.opener) {
+            // 準備要發送的訊息物件，包含一個類型和辨識出的文字
+            const message = {
+                type: 'ocrResult',
+                text: finalResultText
+            };
+            
+            // 使用 postMessage 將訊息發送給打開此視窗的父視窗
+            // 第二個參數 '*' 代表允許發送到任何來源的父視窗，為了方便測試我們先用 '*'
+            // 在正式環境中，為了安全，最好指定父視窗的來源，例如：
+            // window.opener.postMessage(message, 'https://kenchan20141.github.io');
+            window.opener.postMessage(message, '*');
+        }
+        // --- 【新增邏輯結束】 ---
+
+    } catch (error) {
+        console.error('文字辨識時發生錯誤:', error);
+        ocrResult.textContent = `辨識失敗，請稍後再試。\n錯誤訊息：${error.message}`;
+        resultContainer.classList.add('visible');
+    } finally {
+        loadingIndicator.classList.remove('visible');
+        recognizeBtn.disabled = false;
+        recognizeBtn.textContent = '重新辨識';
+    }
+}
             
             // NEW: 複製功能
             function copyResultToClipboard() {
