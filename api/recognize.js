@@ -21,7 +21,7 @@ export default async function handler(request, response) {
   const MODEL_NAME = 'gemini-1.5-flash';
   const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
 
-  const promptText = "這是一張含有手寫文字的圖片。請精確地辨識並提取圖片中的所有繁體中文字。請只回傳辨識出的文字內容，不要添加任何解釋、標題或額外的格式。";
+  const promptText = "這是一份文件（可能是圖片或PDF的一頁）。請精確地辨識並提取其中的所有中文字，如文件中有簡體中文字，則請在轉換時全部轉為繁體中文字。請遵循原始文件的段落結構來組織文字，忽略單純因為排版而產生的換行，只在段落結束時才換行。請直接回傳純文字結果，不要包含任何標題、解釋或額外的格式。";
   const pureBase64 = imageBase64.split(',')[1];
 
   const requestBody = {
