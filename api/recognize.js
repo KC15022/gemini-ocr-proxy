@@ -86,8 +86,7 @@ export default async function handler(request, response) {
   const totalKeys = apiKeys.length;
 
   // 步驟 3: 從 KV 數據庫獲取當前應使用的金鑰索引
-  let keyIndex = 0;
-await setCurrentKeyIndex(0); 
+let keyIndex = await getCurrentKeyIndex();
 
   // 步驟 4: 準備發送給 Gemini API 的請求內容
   const MODEL_NAME = 'gemini-2.5-flash';
