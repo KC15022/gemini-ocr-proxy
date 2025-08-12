@@ -18,7 +18,7 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: 'No image data provided.' });
   }
 
-  const MODEL_NAME = 'gemini-1.5-flash-latest';
+  const MODEL_NAME = 'gemini-1.5-flash';
   const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
 
   const promptText = "這是一張含有手寫文字的圖片。請精確地辨識並提取圖片中的所有繁體中文字。請只回傳辨識出的文字內容，不要添加任何解釋、標題或額外的格式。";
