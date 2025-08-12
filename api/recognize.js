@@ -1,62 +1,537 @@
-// api/recognize.js
-
-export default async function handler(request, response) {
-  // 只接受 POST 請求
-  if (request.method !== 'POST') {
-    return response.status(405).json({ message: 'Method Not Allowed' });
-  }
-
-  // 從環境變數中讀取 API Key，這樣更安全
-  const API_KEY = process.env.GEMINI_API_KEY;
-  if (!API_KEY) {
-    return response.status(500).json({ error: 'API key is not configured.' });
-  }
-
-  const { imageBase64 } = request.body;
-
-  if (!imageBase64) {
-    return response.status(400).json({ error: 'No image data provided.' });
-  }
-
-  const MODEL_NAME = 'gemini-1.5-flash-latest';
-  const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
-
-  const promptText = "這是一張含有手寫文字的圖片。請精確地辨識並提取圖片中的所有繁體中文字。請只回傳辨識出的文字內容，不要添加任何解釋、標題或額外的格式。";
-  const pureBase64 = imageBase64.split(',')[1];
-
-  const requestBody = {
-    "contents": [{
-      "parts": [
-        { "text": promptText },
-        {
-          "inline_data": {
-            "mime_type": "image/jpeg",
-            "data": pureBase64
-          }
-        }
-      ]
-    }],
-    "generationConfig": {
-      "temperature": 0.5
-    }
-  };
-
-  try {
-    const geminiResponse = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手寫中文字OCR工具 | Gemini AI (後端版)</title>
+    <meta name="description" content="上傳多張手寫中文字的圖片檔案，讓 AI 依序為您辨識內容、整理段落並轉換為繁體中文。">
     
-    // 將 Gemini API 的原始回應直接回傳給前端
-    // 這樣前端就可以處理成功或失敗的各種情況
-    const data = await geminiResponse.json();
-    response.status(geminiResponse.status).json(data);
+    <!-- 引入字體 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet">
 
-  } catch (error) {
-    console.error('Error proxying to Gemini API:', error);
-    response.status(500).json({ error: 'Failed to connect to the Gemini API.' });
-  }
-}
+    <style>
+        :root {
+            --bg-color: #F5F3EF; /* 仿宣紙的米白 */
+            --text-color: #3D3B37; /* 墨色 */
+            --accent-color: #A39B8B; /* 枯木色 */
+            --border-color: #DCD6C8; /* 淺石色 */
+            --font-main: 'Noto Serif TC', serif;
+            --font-display: 'Noto Sans TC', sans-serif; /* 結果顯示字體 */
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        #container {
+            width: 100%;
+            max-width: 700px;
+            background: rgba(255, 255, 255, 0.3);
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            text-align: center;
+            transition: all 0.5s ease;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            margin-top: 2rem;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            margin: 0 0 0.5rem 0.2em;
+            color: var(--text-color);
+        }
+
+        #subtitle {
+            font-size: 0.9rem;
+            color: var(--accent-color);
+            margin-bottom: 2rem;
+        }
+
+        #image-input-area {
+            position: relative;
+            width: 100%;
+            min-height: 200px;
+            border: 2px dashed var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            overflow: hidden;
+            box-sizing: border-box;
+            background-color: rgba(255,255,255,0.1);
+        }
+        
+        #image-input-area.has-content {
+            min-height: auto;
+            border: 1px solid var(--border-color);
+            background: none;
+            padding: 1rem;
+            cursor: default;
+        }
+
+        #image-input-area:hover:not(.has-content) {
+            border-color: var(--accent-color);
+        }
+
+        #preview-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .preview-item {
+            position: relative;
+            width: 150px;
+            height: 150px;
+        }
+        
+        .preview-number {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 2px 8px;
+            font-size: 0.8rem;
+            border-bottom-right-radius: 8px;
+            font-family: var(--font-display);
+            z-index: 1;
+        }
+
+        .preview-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        #upload-prompt {
+            z-index: 2;
+            padding: 1rem;
+            transition: opacity 0.5s ease;
+        }
+        
+        #upload-prompt.hidden {
+            display: none;
+        }
+
+        .upload-icon {
+            width: 32px;
+            height: 32px;
+            margin-bottom: 0.5rem;
+            color: var(--accent-color);
+        }
+
+        #file-input, #camera-input {
+            display: none;
+        }
+        
+        #action-buttons {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .action-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--accent-color);
+            padding: 10px 20px;
+            font-family: var(--font-main);
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .action-btn:hover:not(:disabled) {
+            background-color: var(--bg-color);
+            border-color: var(--accent-color);
+            color: var(--text-color);
+        }
+
+        .action-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        #result-container {
+            margin-top: 2rem;
+            width: 100%;
+            min-height: 100px;
+            padding: 1.5rem;
+            box-sizing: border-box;
+            border-top: 1px solid var(--border-color);
+            text-align: left;
+            opacity: 0;
+            transition: opacity 1.5s ease;
+            background-color: rgba(255,255,255,0.4);
+            border-radius: 4px;
+            display: none;
+            position: relative;
+        }
+        
+        #result-container.visible {
+            opacity: 1;
+            display: block;
+        }
+
+        #copy-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: 1px solid transparent;
+            color: var(--accent-color);
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            z-index: 5;
+        }
+
+        #copy-btn:hover {
+            color: var(--text-color);
+            background-color: rgba(0,0,0,0.05);
+        }
+        
+        #ocr-result {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 400;
+            line-height: 1.8;
+            letter-spacing: 0.1em;
+            color: var(--text-color);
+            white-space: pre-wrap;
+            margin: 0;
+            padding-right: 2.5rem;
+        }
+        
+        #loading-indicator {
+            display: none;
+            width: 100%;
+            text-align: center;
+            padding: 2rem 0;
+            font-size: 1rem;
+            color: var(--accent-color);
+        }
+
+        #loading-indicator.visible {
+            display: block;
+            animation: fadeInOut 2s infinite;
+        }
+        
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        .copyright-footer {
+            margin-top: 2rem;
+            font-size: 14px;
+            color: var(--accent-color);
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 1rem; }
+            #container { padding: 1.5rem; }
+            h1 { font-size: 1.6rem; }
+            .action-btn { padding: 8px 16px; font-size: 0.85rem; }
+            .copyright-footer { font-size: 12px; }
+            .preview-item { width: 120px; height: 120px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <h1>手寫中文字辨識</h1>
+        <p id="subtitle">上傳圖片，AI 將為您辨識內容、整理段落並轉為繁體</p>
+
+        <!-- 檔案上傳區域 -->
+        <div id="image-input-area">
+            <div id="preview-container"></div>
+            <div id="upload-prompt">
+                <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                </svg>
+                <p>點擊此處選擇圖片檔案 (可多選)</p>
+            </div>
+        </div>
+        
+        <!-- 【修改】移除 accept 中的 application/pdf -->
+        <input type="file" id="file-input" accept="image/*" multiple>
+        <input type="file" id="camera-input" accept="image/*" capture="environment">
+
+        <!-- 操作按鈕 -->
+        <div id="action-buttons">
+            <button id="camera-btn" class="action-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M10.5 8.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
+                    <path d="M2 4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.172a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 9.172 2H6.828a2 2 0 0 0-1.414.586l-.828.828A2 2 0 0 1 3.172 4H2zm.5 2a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1zm9 2.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z"/>
+                </svg>
+                <span>即席攝影</span>
+            </button>
+            <button id="recognize-btn" class="action-btn" disabled>開始辨識</button>
+        </div>
+        
+        <!-- 結果顯示區域 -->
+        <div id="result-container">
+            <button id="copy-btn" title="複製全文">
+                <svg id="copy-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zM9 2H7v.5a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5V2z"/>
+                </svg>
+                <span id="copy-btn-text" style="display: none;">已複製!</span>
+            </button>
+            <p id="ocr-result"></p>
+        </div>
+
+        <!-- Loading 指示器 -->
+        <div id="loading-indicator">辨識中…</div>
+    </div>
+
+    <footer class="copyright-footer">
+        <p>Copyright © 2025 陳冠健. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // 【修改】移除前端的 API 金鑰與 URL
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const imageInputArea = document.getElementById('image-input-area');
+            const fileInput = document.getElementById('file-input');
+            const cameraInput = document.getElementById('camera-input');
+            const cameraBtn = document.getElementById('camera-btn');
+            const recognizeBtn = document.getElementById('recognize-btn');
+            const previewContainer = document.getElementById('preview-container');
+            const uploadPrompt = document.getElementById('upload-prompt');
+            const resultContainer = document.getElementById('result-container');
+            const ocrResult = document.getElementById('ocr-result');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const copyBtn = document.getElementById('copy-btn');
+            const copyBtnText = document.getElementById('copy-btn-text');
+            const copyIcon = document.getElementById('copy-icon');
+
+            let imagesToProcess = [];
+
+            imageInputArea.addEventListener('click', () => fileInput.click());
+            cameraBtn.addEventListener('click', () => cameraInput.click());
+            fileInput.addEventListener('change', handleFileSelect);
+            cameraInput.addEventListener('change', handleFileSelect);
+            recognizeBtn.addEventListener('click', recognizeText);
+            copyBtn.addEventListener('click', copyResultToClipboard);
+
+            function resetUI() {
+                imagesToProcess = [];
+                previewContainer.innerHTML = '';
+                resultContainer.classList.remove('visible');
+                ocrResult.textContent = '';
+                recognizeBtn.disabled = true;
+                recognizeBtn.textContent = '開始辨識';
+                uploadPrompt.classList.remove('hidden');
+                imageInputArea.classList.remove('has-content');
+                imageInputArea.style.cursor = 'pointer';
+            }
+
+            async function handleFileSelect(event) {
+                const files = event.target.files;
+                if (!files || files.length === 0) return;
+
+                resetUI();
+                loadingIndicator.classList.add('visible');
+                
+                uploadPrompt.classList.add('hidden');
+                imageInputArea.classList.add('has-content');
+                imageInputArea.style.cursor = 'default';
+
+                const fileList = Array.from(files);
+                let processingPromises = [];
+                
+                // 【修改】簡化檔案處理，只處理圖片
+                loadingIndicator.textContent = `處理圖片中...`;
+                fileList.forEach(file => {
+                    if (file.type.startsWith('image/')) {
+                        processingPromises.push(resizeImage(file, 1024, 0.9));
+                    }
+                });
+                
+                try {
+                    imagesToProcess = await Promise.all(processingPromises);
+                    updatePreviews();
+                } catch(error) {
+                    alert(`處理檔案時發生錯誤: ${error.message}`);
+                    resetUI();
+                } finally {
+                    loadingIndicator.classList.remove('visible');
+                    if(imagesToProcess.length > 0) {
+                        recognizeBtn.disabled = false;
+                    }
+                }
+            }
+            
+            function updatePreviews() {
+                previewContainer.innerHTML = '';
+                imagesToProcess.forEach((base64, index) => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'preview-item';
+
+                    const numberSpan = document.createElement('span');
+                    numberSpan.className = 'preview-number';
+                    numberSpan.textContent = index + 1;
+
+                    const imgElement = document.createElement('img');
+                    imgElement.src = base64;
+                    imgElement.className = 'preview-image';
+                    imgElement.alt = `預覽圖 ${index + 1}`;
+                    
+                    itemDiv.appendChild(numberSpan);
+                    itemDiv.appendChild(imgElement);
+                    previewContainer.appendChild(itemDiv);
+                });
+            }
+
+            function resizeImage(file, maxSize, quality) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            let { width, height } = img;
+                            if (width > height) {
+                                if (width > maxSize) { height *= maxSize / width; width = maxSize; }
+                            } else {
+                                if (height > maxSize) { width *= maxSize / height; height = maxSize; }
+                            }
+                            const canvas = document.createElement('canvas');
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+                            resolve(canvas.toDataURL('image/jpeg', quality));
+                        };
+                        img.onerror = reject;
+                        img.src = e.target.result;
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // 【修改】移除 handlePdfFile 函式
+
+            // --- 【核心修改】呼叫後端 API 的辨識函式 ---
+            async function recognizeText() {
+                if (imagesToProcess.length === 0) {
+                    alert('請先選擇至少一個圖片檔案。');
+                    return;
+                }
+
+                recognizeBtn.disabled = true;
+                recognizeBtn.textContent = '辨識中...';
+                resultContainer.classList.remove('visible');
+                loadingIndicator.classList.add('visible');
+                
+                let allRecognizedText = [];
+                // 定義後端 API 的路徑
+                const BACKEND_API_URL = '/api/recognize';
+
+                try {
+                    for (let i = 0; i < imagesToProcess.length; i++) {
+                        loadingIndicator.textContent = `AI 辨識中 (${i + 1}/${imagesToProcess.length})...`;
+                        
+                        const imageBase64 = imagesToProcess[i];
+                        
+                        // 發送請求到後端
+                        const response = await fetch(BACKEND_API_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ imageBase64: imageBase64 })
+                        });
+
+                        // 處理後端回傳的錯誤
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            const errorMessage = errorData.error?.message || JSON.stringify(errorData);
+                            throw new Error(`第 ${i+1} 張圖片辨識失敗: ${errorMessage}`);
+                        }
+
+                        // 解析後端轉發的 Gemini API 回應
+                        const data = await response.json();
+                        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                        if (!content) {
+                            const blockReason = data.promptFeedback?.blockReason;
+                            if (blockReason) {
+                                allRecognizedText.push(`[第 ${i + 1} 張圖片因「${blockReason}」而被阻擋]`);
+                            } else {
+                                allRecognizedText.push(`[第 ${i + 1} 張圖片辨識失敗或無內容]`);
+                            }
+                        } else {
+                            allRecognizedText.push(content.trim());
+                        }
+                    }
+                    
+                    const finalResultText = allRecognizedText.join('\n\n');
+                    
+                    ocrResult.textContent = finalResultText.trim() || '未辨識到任何文字。';
+                    resultContainer.classList.add('visible');
+
+                } catch (error) {
+                    console.error('文字辨識時發生錯誤:', error);
+                    ocrResult.textContent = `辨識失敗，請稍後再試。\n錯誤訊息：${error.message}`;
+                    resultContainer.classList.add('visible');
+                } finally {
+                    loadingIndicator.classList.remove('visible');
+                    recognizeBtn.disabled = false;
+                    recognizeBtn.textContent = '重新辨識';
+                }
+            }
+            
+            function copyResultToClipboard() {
+                const textToCopy = ocrResult.textContent;
+                if (!textToCopy) return;
+
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    copyIcon.style.display = 'none';
+                    copyBtnText.style.display = 'inline';
+                    setTimeout(() => {
+                        copyIcon.style.display = 'inline';
+                        copyBtnText.style.display = 'none';
+                    }, 2000);
+                }).catch(err => {
+                    console.error('複製失敗:', err);
+                    alert('複製失敗，您的瀏覽器可能不支援此功能。');
+                });
+            }
+        });
+    </script>
+</body>
+</html>
