@@ -3,20 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>手寫中文字OCR工具 | Gemini AI (後端版)</title>
-    <meta name="description" content="上傳多張手寫中文字的圖片或PDF檔案，讓 AI 依序為您辨識內容、整理段落並轉換為繁體中文。">
-
+    <title>手寫中文字OCR工具 | Gemini AI</title>
+    <meta name="description" content="上傳多張手寫中文字的圖片，讓 AI 依序為您辨識內容。">
+    
     <!-- 引入字體 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet">
-
-    <!-- 引入 PDF.js 函式庫 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script>
-        // 設定 PDF.js 的 worker 路徑
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
-    </script>
 
     <style>
         :root {
@@ -46,7 +39,7 @@
 
         #container {
             width: 100%;
-            max-width: 700px;
+            max-width: 600px; /* 稍微加寬以容納新設計 */
             background: rgba(255, 255, 255, 0.3);
             padding: 2rem;
             border: 1px solid var(--border-color);
@@ -88,48 +81,31 @@
             background-color: rgba(255,255,255,0.1);
         }
         
-        #image-input-area.has-content {
-            min-height: auto;
+        #image-input-area.has-image {
+            min-height: auto; /* 調整高度以適應內容 */
             border: 1px solid var(--border-color);
             background: none;
             padding: 1rem;
             cursor: default;
         }
 
-        #image-input-area:hover:not(.has-content) {
+        #image-input-area:hover:not(.has-image) {
             border-color: var(--accent-color);
         }
 
+        /* NEW: 預覽容器 */
         #preview-container {
             display: flex;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 10px;
             justify-content: center;
             width: 100%;
         }
 
-        .preview-item {
-            position: relative;
-            width: 150px;
-            height: 150px;
-        }
-        
-        .preview-number {
-            position: absolute;
-            top: 0;
-            left: 0;
-            background-color: rgba(0, 0, 0, 0.6);
-            color: white;
-            padding: 2px 8px;
-            font-size: 0.8rem;
-            border-bottom-right-radius: 8px;
-            font-family: var(--font-display);
-            z-index: 1;
-        }
-
+        /* NEW: 預覽圖片縮圖 */
         .preview-image {
-            width: 100%;
-            height: 100%;
+            width: 100px;
+            height: 100px;
             object-fit: cover;
             border: 1px solid var(--border-color);
             border-radius: 4px;
@@ -201,15 +177,16 @@
             transition: opacity 1.5s ease;
             background-color: rgba(255,255,255,0.4);
             border-radius: 4px;
-            display: none;
-            position: relative;
+            display: none; /* 預設隱藏 */
+            position: relative; /* 為了複製按鈕定位 */
         }
         
         #result-container.visible {
             opacity: 1;
-            display: block;
+            display: block; /* 設為可見時顯示 */
         }
 
+        /* NEW: 複製按鈕 */
         #copy-btn {
             position: absolute;
             top: 1rem;
@@ -221,7 +198,6 @@
             padding: 5px;
             border-radius: 4px;
             transition: all 0.3s ease;
-            z-index: 5;
         }
 
         #copy-btn:hover {
@@ -236,9 +212,9 @@
             line-height: 1.8;
             letter-spacing: 0.1em;
             color: var(--text-color);
-            white-space: pre-wrap;
+            white-space: pre-wrap; /* 保持換行符 */
             margin: 0;
-            padding-right: 2.5rem;
+            padding-right: 2rem; /* 避免文字與複製按鈕重疊 */
         }
         
         #loading-indicator {
@@ -272,7 +248,6 @@
             h1 { font-size: 1.6rem; }
             .action-btn { padding: 8px 16px; font-size: 0.85rem; }
             .copyright-footer { font-size: 12px; }
-            .preview-item { width: 120px; height: 120px; }
         }
     </style>
 </head>
@@ -280,24 +255,33 @@
 
     <div id="container">
         <h1>手寫中文字辨識</h1>
-        <p id="subtitle">上傳圖片或 PDF，AI 將為您辨識內容、整理段落並轉為繁體</p>
+        <p id="subtitle">上傳一張或多張圖片，AI 將依序辨識</p>
 
-        <!-- 檔案上傳區域 -->
+        <!-- 圖片上傳區域 -->
         <div id="image-input-area">
+             <!-- NEW: 預覽容器 -->
             <div id="preview-container"></div>
             <div id="upload-prompt">
                 <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                 </svg>
-                <p>點擊此處選擇檔案 (可多選圖片或單一PDF)</p>
+                <p>點擊此處選擇檔案 (可多選)</p>
             </div>
         </div>
         
-        <input type="file" id="file-input" accept="image/*,application/pdf" multiple>
+        <!-- 隱藏的 input 元素 (NEW: 新增 multiple) -->
+        <input type="file" id="file-input" accept="image/*" multiple>
         <input type="file" id="camera-input" accept="image/*" capture="environment">
 
         <!-- 操作按鈕 -->
         <div id="action-buttons">
+            <button id="upload-btn" class="action-btn">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-upload" viewBox="0 0 16 16">
+                  <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                  <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                </svg>
+                <span>選擇檔案</span>
+            </button>
             <button id="camera-btn" class="action-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
                     <path d="M10.5 8.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
@@ -310,6 +294,7 @@
         
         <!-- 結果顯示區域 -->
         <div id="result-container">
+            <!-- NEW: 複製按鈕 -->
             <button id="copy-btn" title="複製全文">
                 <svg id="copy-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
                     <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
@@ -330,9 +315,11 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // 獲取所有需要的 DOM 元素
             const imageInputArea = document.getElementById('image-input-area');
             const fileInput = document.getElementById('file-input');
             const cameraInput = document.getElementById('camera-input');
+            const uploadBtn = document.getElementById('upload-btn');
             const cameraBtn = document.getElementById('camera-btn');
             const recognizeBtn = document.getElementById('recognize-btn');
             const previewContainer = document.getElementById('preview-container');
@@ -344,232 +331,176 @@
             const copyBtnText = document.getElementById('copy-btn-text');
             const copyIcon = document.getElementById('copy-icon');
 
-            let imagesToProcess = [];
+            let selectedImages = []; // NEW: 儲存多張圖片的 Base64
 
+            // --- 事件監聽 ---
             imageInputArea.addEventListener('click', () => fileInput.click());
+            uploadBtn.addEventListener('click', () => fileInput.click());
             cameraBtn.addEventListener('click', () => cameraInput.click());
             fileInput.addEventListener('change', handleFileSelect);
             cameraInput.addEventListener('change', handleFileSelect);
             recognizeBtn.addEventListener('click', recognizeText);
             copyBtn.addEventListener('click', copyResultToClipboard);
 
-            function resetUI() {
-                imagesToProcess = [];
-                previewContainer.innerHTML = '';
-                resultContainer.classList.remove('visible');
-                ocrResult.textContent = '';
-                recognizeBtn.disabled = true;
-                recognizeBtn.textContent = '開始辨識';
-                uploadPrompt.classList.remove('hidden');
-                imageInputArea.classList.remove('has-content');
-                imageInputArea.style.cursor = 'pointer';
-            }
-
-            async function handleFileSelect(event) {
+            // --- 核心功能函數 ---
+            function handleFileSelect(event) {
                 const files = event.target.files;
                 if (!files || files.length === 0) return;
 
-                resetUI();
-                loadingIndicator.classList.add('visible');
-                
-                uploadPrompt.classList.add('hidden');
-                imageInputArea.classList.add('has-content');
-                imageInputArea.style.cursor = 'default';
-
-                const fileList = Array.from(files);
-                let processingPromises = [];
-
-                const pdfFile = fileList.find(f => f.type === 'application/pdf');
-                if (pdfFile) {
-                    if (fileList.length > 1) {
-                         alert("PDF檔案請單獨上傳，不要與其他圖片混合。");
-                         resetUI();
-                         loadingIndicator.classList.remove('visible');
-                         return;
-                    }
-                    loadingIndicator.textContent = '處理PDF中，請稍候…';
-                    processingPromises.push(handlePdfFile(pdfFile));
-                } else {
-                    loadingIndicator.textContent = `處理圖片中...`;
-                    fileList.forEach(file => {
-                        if (file.type.startsWith('image/')) {
-                            processingPromises.push(resizeImage(file, 1024, 0.9));
-                        }
-                    });
-                }
-                
-                try {
-                    imagesToProcess = (await Promise.all(processingPromises)).flat();
-                    updatePreviews();
-                } catch(error) {
-                    alert(`處理檔案時發生錯誤: ${error.message}`);
-                    resetUI();
-                } finally {
-                    loadingIndicator.classList.remove('visible');
-                    if(imagesToProcess.length > 0) {
-                        recognizeBtn.disabled = false;
-                    }
-                }
-            }
-            
-            function updatePreviews() {
+                // 重置狀態
+                selectedImages = [];
                 previewContainer.innerHTML = '';
-                imagesToProcess.forEach((base64, index) => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'preview-item';
-
-                    const numberSpan = document.createElement('span');
-                    numberSpan.className = 'preview-number';
-                    numberSpan.textContent = index + 1;
-
-                    const imgElement = document.createElement('img');
-                    imgElement.src = base64;
-                    imgElement.className = 'preview-image';
-                    imgElement.alt = `預覽圖 ${index + 1}`;
-                    
-                    itemDiv.appendChild(numberSpan);
-                    itemDiv.appendChild(imgElement);
-                    previewContainer.appendChild(itemDiv);
-                });
-            }
-
-            function resizeImage(file, maxSize, quality) {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            let { width, height } = img;
-                            if (width > height) {
-                                if (width > maxSize) { height *= maxSize / width; width = maxSize; }
-                            } else {
-                                if (height > maxSize) { width *= maxSize / height; height = maxSize; }
-                            }
-                            const canvas = document.createElement('canvas');
-                            canvas.width = width;
-                            canvas.height = height;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, width, height);
-                            resolve(canvas.toDataURL('image/jpeg', quality));
-                        };
-                        img.onerror = reject;
-                        img.src = e.target.result;
-                    };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-            }
-
-            async function handlePdfFile(file) {
-                const fileReader = new FileReader();
-                return new Promise((resolve, reject) => {
-                    fileReader.onload = async (e) => {
-                        try {
-                            const pdfData = new Uint8Array(e.target.result);
-                            const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
-                            const numPages = pdf.numPages;
-                            let pagePromises = [];
-
-                            for (let i = 1; i <= numPages; i++) {
-                                loadingIndicator.textContent = `處理PDF中 (${i}/${numPages}頁)...`;
-                                const page = await pdf.getPage(i);
-                                const viewport = page.getViewport({ scale: 2.0 });
-                                const canvas = document.createElement('canvas');
-                                const context = canvas.getContext('2d');
-                                canvas.height = viewport.height;
-                                canvas.width = viewport.width;
-
-                                await page.render({ canvasContext: context, viewport: viewport }).promise;
-                                pagePromises.push(canvas.toDataURL('image/jpeg', 0.9));
-                            }
-                            resolve(pagePromises);
-                        } catch (error) {
-                            console.error('處理PDF時發生錯誤:', error);
-                            reject(new Error(`處理PDF失敗: ${error.message}`));
-                        }
-                    };
-                    fileReader.readAsArrayBuffer(file);
-                });
-            }
-
-            // --- 【核心修改】呼叫後端 API 的函式 ---
-            async function recognizeText() {
-                if (imagesToProcess.length === 0) {
-                    alert('請先選擇至少一個檔案。');
-                    return;
-                }
-
-                recognizeBtn.disabled = true;
-                recognizeBtn.textContent = '辨識中...';
                 resultContainer.classList.remove('visible');
                 loadingIndicator.classList.add('visible');
+                loadingIndicator.textContent = `處理圖片中 (0/${files.length})...`;
                 
-                let allRecognizedText = [];
+                uploadPrompt.classList.add('hidden');
+                imageInputArea.classList.add('has-image');
+                imageInputArea.style.cursor = 'default';
 
-                try {
-                    for (let i = 0; i < imagesToProcess.length; i++) {
-                        loadingIndicator.textContent = `AI 辨識中 (${i + 1}/${imagesToProcess.length})...`;
+                let processedCount = 0;
+                
+                // 使用 Array.from 將 FileList 轉為陣列以使用 forEach
+                Array.from(files).forEach((file, index) => {
+                    resizeImage(file, 1024, 0.9, (base64) => {
+                        // 確保依序處理
+                        selectedImages[index] = base64;
                         
-                        const imageBase64 = imagesToProcess[i];
-                        // 後端代理的 API 路徑
-                        const PROXY_API_URL = '/api/recognize';
+                        // 建立並顯示縮圖
+                        const imgElement = document.createElement('img');
+                        imgElement.src = base64;
+                        imgElement.classList.add('preview-image');
+                        imgElement.alt = `預覽圖 ${index + 1}`;
+                        previewContainer.appendChild(imgElement);
 
-                        const response = await fetch(PROXY_API_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ imageBase64: imageBase64 }) // 將圖片 base64 傳給後端
-                        });
+                        processedCount++;
+                        loadingIndicator.textContent = `處理圖片中 (${processedCount}/${files.length})...`;
 
-                        const data = await response.json();
-
-                        if (!response.ok) {
-                            // 如果後端傳回錯誤訊息，就顯示它
-                            const errorMessage = data.error?.message || JSON.stringify(data);
-                            throw new Error(`第 ${i+1} 張圖片辨識失敗: ${errorMessage}`);
+                        // 所有圖片處理完畢
+                        if (processedCount === files.length) {
+                            loadingIndicator.classList.remove('visible');
+                            recognizeBtn.disabled = false;
+                            recognizeBtn.textContent = '開始辨識';
                         }
-                        
-                        // 從後端回傳的資料中提取辨識結果
-                        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        
-                        if (!content) {
-                            const blockReason = data.promptFeedback?.blockReason;
-                            if (blockReason) {
-                                allRecognizedText.push(`[第 ${i + 1} 張圖片因「${blockReason}」被阻擋]`);
-                            } else {
-                                allRecognizedText.push(`[第 ${i + 1} 張圖片辨識失敗或無內容]`);
-                            }
-                        } else {
-                            allRecognizedText.push(content.trim());
-                        }
-                    }
-                    
-                    const finalResultText = allRecognizedText.join('\n\n');
-                    
-                    ocrResult.textContent = finalResultText.trim() || '未辨識到任何文字。';
-                    resultContainer.classList.add('visible');
-
-                } catch (error) {
-                    console.error('文字辨識時發生錯誤:', error);
-                    ocrResult.textContent = `辨識失敗，請稍後再試。\n錯誤訊息：${error.message}`;
-                    resultContainer.classList.add('visible');
-                } finally {
-                    loadingIndicator.classList.remove('visible');
-                    recognizeBtn.disabled = false;
-                    recognizeBtn.textContent = '重新辨識';
-                }
+                    });
+                });
             }
             
+            function resizeImage(file, maxSize, quality, callback) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let { width, height } = img;
+                        if (width > height) {
+                            if (width > maxSize) { height *= maxSize / width; width = maxSize; }
+                        } else {
+                            if (height > maxSize) { width *= maxSize / height; height = maxSize; }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        callback(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            // 【請使用這個全新的、完整的 recognizeText 函式來替換舊的】
+async function recognizeText() {
+    if (selectedImages.length === 0) {
+        alert('請先選擇至少一張圖片。');
+        return;
+    }
+
+    recognizeBtn.disabled = true;
+    resultContainer.classList.remove('visible');
+    loadingIndicator.classList.add('visible');
+    
+    let allRecognizedText = [];
+
+    try {
+        for (let i = 0; i < selectedImages.length; i++) {
+            const imageBase64 = selectedImages[i];
+            loadingIndicator.textContent = `AI 辨識中 (${i + 1}/${selectedImages.length})...`;
+
+            const PROXY_API_URL = '/api/recognize'; // Vercel 後端代理路徑
+            
+            const response = await fetch(PROXY_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageBase64: imageBase64 })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                const errorMessage = errorData.error?.message || JSON.stringify(errorData);
+                throw new Error(`第 ${i+1} 張圖片 API 請求失敗: ${errorMessage}`);
+            }
+
+            const data = await response.json();
+            const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+            if (!content) {
+                const blockReason = data.promptFeedback?.blockReason;
+                if (blockReason) throw new Error(`第 ${i+1} 張圖片請求因「${blockReason}」而被阻擋。`);
+                allRecognizedText.push(`[第 ${i + 1} 張圖片辨識失敗或無內容]`);
+            } else {
+                allRecognizedText.push(content);
+            }
+        }
+        
+        // 將所有圖片的辨識結果用兩個換行符連接起來
+        const finalResultText = allRecognizedText.join('\n\n');
+        
+        // 在當前頁面顯示結果
+        ocrResult.textContent = finalResultText;
+        resultContainer.classList.add('visible');
+
+        // --- 【新增的核心邏輯】 ---
+        // 檢查這個視窗是否由其他視窗(window.opener)打開的
+        if (window.opener) {
+            // 準備要發送的訊息物件，包含一個類型和辨識出的文字
+            const message = {
+                type: 'ocrResult',
+                text: finalResultText
+            };
+            
+            // 使用 postMessage 將訊息發送給打開此視窗的父視窗
+            // 第二個參數 '*' 代表允許發送到任何來源的父視窗，為了方便測試我們先用 '*'
+            // 在正式環境中，為了安全，最好指定父視窗的來源，例如：
+            // window.opener.postMessage(message, 'https://kenchan20141.github.io');
+            window.opener.postMessage(message, '*');
+        }
+        // --- 【新增邏輯結束】 ---
+
+    } catch (error) {
+        console.error('文字辨識時發生錯誤:', error);
+        ocrResult.textContent = `辨識失敗，請稍後再試。\n錯誤訊息：${error.message}`;
+        resultContainer.classList.add('visible');
+    } finally {
+        loadingIndicator.classList.remove('visible');
+        recognizeBtn.disabled = false;
+        recognizeBtn.textContent = '重新辨識';
+    }
+}
+            
+            // NEW: 複製功能
             function copyResultToClipboard() {
                 const textToCopy = ocrResult.textContent;
                 if (!textToCopy) return;
 
                 navigator.clipboard.writeText(textToCopy).then(() => {
+                    // 顯示成功提示
                     copyIcon.style.display = 'none';
                     copyBtnText.style.display = 'inline';
                     setTimeout(() => {
                         copyIcon.style.display = 'inline';
                         copyBtnText.style.display = 'none';
-                    }, 2000);
+                    }, 2000); // 2秒後恢復原狀
                 }).catch(err => {
                     console.error('複製失敗:', err);
                     alert('複製失敗，您的瀏覽器可能不支援此功能。');
