@@ -24,6 +24,7 @@
             --text-color: #3D3B37; /* 墨色 */
             --accent-color: #A39B8B; /* 枯木色 */
             --border-color: #DCD6C8; /* 淺石色 */
+            --danger-color: #D9534F; /* 紅色用於刪除 */
             --font-main: 'Noto Serif TC', serif;
             --font-display: 'Noto Sans TC', sans-serif; /* 結果顯示字體 */
         }
@@ -112,6 +113,7 @@
             position: relative;
             width: 150px;
             height: 150px;
+            cursor: zoom-in;
         }
         
         .preview-number {
@@ -124,7 +126,7 @@
             font-size: 0.8rem;
             border-bottom-right-radius: 8px;
             font-family: var(--font-display);
-            z-index: 1;
+            z-index: 10;
         }
 
         .preview-image {
@@ -133,6 +135,34 @@
             object-fit: cover;
             border: 1px solid var(--border-color);
             border-radius: 4px;
+        }
+        
+        .delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 11;
+            padding: 0;
+            transition: background-color 0.2s;
+        }
+
+        .delete-btn:hover {
+            background-color: white;
+        }
+        
+        .delete-btn svg {
+            width: 16px;
+            height: 16px;
+            color: var(--danger-color);
         }
 
         #upload-prompt {
@@ -255,6 +285,31 @@
             animation: fadeInOut 2s infinite;
         }
         
+        /* Modal (Lightbox) Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.85);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90%;
+        }
+
         @keyframes fadeInOut {
             0%, 100% { opacity: 0.5; }
             50% { opacity: 1; }
@@ -328,6 +383,11 @@
         <p>Copyright © 2025 陳冠健. All rights reserved.</p>
     </footer>
 
+    <!-- 全螢幕圖片 Modal -->
+    <div id="image-modal" class="modal">
+        <img class="modal-content" id="modal-img">
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const imageInputArea = document.getElementById('image-input-area');
@@ -343,52 +403,62 @@
             const copyBtn = document.getElementById('copy-btn');
             const copyBtnText = document.getElementById('copy-btn-text');
             const copyIcon = document.getElementById('copy-icon');
+            const imageModal = document.getElementById('image-modal');
+            const modalImg = document.getElementById('modal-img');
 
             let imagesToProcess = [];
 
-            imageInputArea.addEventListener('click', () => fileInput.click());
+            imageInputArea.addEventListener('click', (e) => {
+                // 如果點擊的不是預覽項目，才觸發檔案選擇
+                if (e.target === imageInputArea || e.target === uploadPrompt || uploadPrompt.contains(e.target)) {
+                    fileInput.click();
+                }
+            });
+
             cameraBtn.addEventListener('click', () => cameraInput.click());
             fileInput.addEventListener('change', handleFileSelect);
-            cameraInput.addEventListener('change', handleFileSelect);
+            cameraInput.addEventListener('change', handleFileSelect); // 拍照也使用同一個處理函式
             recognizeBtn.addEventListener('click', recognizeText);
             copyBtn.addEventListener('click', copyResultToClipboard);
+            imageModal.addEventListener('click', () => imageModal.style.display = 'none'); // 點擊 modal 任意處關閉
 
-            function resetUI() {
-                imagesToProcess = [];
-                previewContainer.innerHTML = '';
-                resultContainer.classList.remove('visible');
-                ocrResult.textContent = '';
-                recognizeBtn.disabled = true;
-                recognizeBtn.textContent = '開始辨識';
-                uploadPrompt.classList.remove('hidden');
-                imageInputArea.classList.remove('has-content');
-                imageInputArea.style.cursor = 'pointer';
+
+            function updateUIState() {
+                if (imagesToProcess.length > 0) {
+                    uploadPrompt.classList.add('hidden');
+                    imageInputArea.classList.add('has-content');
+                    imageInputArea.style.cursor = 'default';
+                    recognizeBtn.disabled = false;
+                } else {
+                    uploadPrompt.classList.remove('hidden');
+                    imageInputArea.classList.remove('has-content');
+                    imageInputArea.style.cursor = 'pointer';
+                    recognizeBtn.disabled = true;
+                    recognizeBtn.textContent = '開始辨識';
+                    resultContainer.classList.remove('visible');
+                    ocrResult.textContent = '';
+                }
             }
 
             async function handleFileSelect(event) {
                 const files = event.target.files;
                 if (!files || files.length === 0) return;
 
-                resetUI();
                 loadingIndicator.classList.add('visible');
                 
-                uploadPrompt.classList.add('hidden');
-                imageInputArea.classList.add('has-content');
-                imageInputArea.style.cursor = 'default';
-
                 const fileList = Array.from(files);
                 let processingPromises = [];
 
-                const pdfFile = fileList.find(f => f.type === 'application/pdf');
-                if (pdfFile) {
-                    if (fileList.length > 1) {
-                         alert("PDF檔案請單獨上傳，不要與其他圖片混合。");
-                         resetUI();
+                // 規則檢查: PDF 必須單獨處理
+                const isPdfUpload = fileList.some(f => f.type === 'application/pdf');
+                if (isPdfUpload) {
+                    if (imagesToProcess.length > 0 || fileList.length > 1) {
+                         alert("PDF檔案請單獨上傳，請先清除現有的圖片。");
                          loadingIndicator.classList.remove('visible');
                          return;
                     }
                     loadingIndicator.textContent = '處理PDF中，請稍候…';
-                    processingPromises.push(handlePdfFile(pdfFile));
+                    processingPromises.push(handlePdfFile(fileList[0]));
                 } else {
                     loadingIndicator.textContent = `處理圖片中...`;
                     fileList.forEach(file => {
@@ -399,24 +469,25 @@
                 }
                 
                 try {
-                    imagesToProcess = (await Promise.all(processingPromises)).flat();
+                    const newImages = (await Promise.all(processingPromises)).flat();
+                    imagesToProcess.push(...newImages); // 疊加圖片，而不是取代
                     updatePreviews();
                 } catch(error) {
                     alert(`處理檔案時發生錯誤: ${error.message}`);
-                    resetUI();
                 } finally {
                     loadingIndicator.classList.remove('visible');
-                    if(imagesToProcess.length > 0) {
-                        recognizeBtn.disabled = false;
-                    }
+                    // 清空 input 的值，這樣才能重複上傳同一個檔案
+                    event.target.value = ''; 
+                    updateUIState();
                 }
             }
             
             function updatePreviews() {
-                previewContainer.innerHTML = '';
+                previewContainer.innerHTML = ''; // 清空現有預覽
                 imagesToProcess.forEach((base64, index) => {
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'preview-item';
+                    itemDiv.onclick = () => openImageModal(base64);
 
                     const numberSpan = document.createElement('span');
                     numberSpan.className = 'preview-number';
@@ -427,10 +498,31 @@
                     imgElement.className = 'preview-image';
                     imgElement.alt = `預覽圖 ${index + 1}`;
                     
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.title = `刪除第 ${index + 1} 張圖片`;
+                    deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.58.22-2.365.468a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.576l.84-10.518.149.022a.75.75 0 10.23-1.482A41.11 41.11 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.023 2.5.067V3.75a1.25 1.25 0 10-2.5 0v.317c.827-.044 1.66-.067 2.5-.067zM8.25 6.25a.75.75 0 01.75.75v7.5a.75.75 0 01-1.5 0v-7.5a.75.75 0 01.75-.75zm3.5 0a.75.75 0 01.75.75v7.5a.75.75 0 01-1.5 0v-7.5a.75.75 0 01.75-.75z" clip-rule="evenodd" /></svg>`;
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation(); // 防止觸發父層的點擊事件 (放大圖片)
+                        deleteImage(index);
+                    };
+
                     itemDiv.appendChild(numberSpan);
                     itemDiv.appendChild(imgElement);
+                    itemDiv.appendChild(deleteBtn);
                     previewContainer.appendChild(itemDiv);
                 });
+            }
+
+            function deleteImage(indexToDelete) {
+                imagesToProcess.splice(indexToDelete, 1); // 從陣列中移除
+                updatePreviews(); // 重新渲染預覽
+                updateUIState();  // 更新整體UI狀態
+            }
+
+            function openImageModal(base64) {
+                modalImg.src = base64;
+                imageModal.style.display = 'flex';
             }
 
             function resizeImage(file, maxSize, quality) {
@@ -544,9 +636,7 @@
                     ocrResult.textContent = finalResultText || '未辨識到任何文字。';
                     resultContainer.classList.add('visible');
 
-                    // 檢查此視窗是否由其他視窗開啟 (確保 window.opener 存在)
                     if (window.opener) {
-                        // 將辨識結果透過 postMessage 傳送回開啟它的父視窗
                         window.opener.postMessage({
                             type: 'ocrResult',
                             text: finalResultText
