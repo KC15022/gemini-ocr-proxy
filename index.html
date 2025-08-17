@@ -133,6 +133,36 @@
             object-fit: cover;
             border: 1px solid var(--border-color);
             border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .preview-image:hover {
+            transform: scale(1.03);
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 24px;
+            height: 24px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            z-index: 2;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .preview-item:hover .delete-btn {
+            opacity: 1;
         }
 
         #upload-prompt {
@@ -260,6 +290,29 @@
             50% { opacity: 1; }
         }
 
+        /* Lightbox (全螢幕預覽) 樣式 */
+        #lightbox-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        #lightbox-image {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+        }
+
+
         .copyright-footer {
             margin-top: 2rem;
             font-size: 14px;
@@ -324,6 +377,11 @@
         <div id="loading-indicator">辨識中…</div>
     </div>
 
+    <!-- Lightbox (全螢幕預覽) HTML -->
+    <div id="lightbox-overlay">
+        <img id="lightbox-image" src="" alt="放大預覽">
+    </div>
+
     <footer class="copyright-footer">
         <p>Copyright © 2025 陳冠健. All rights reserved.</p>
     </footer>
@@ -343,6 +401,8 @@
             const copyBtn = document.getElementById('copy-btn');
             const copyBtnText = document.getElementById('copy-btn-text');
             const copyIcon = document.getElementById('copy-icon');
+            const lightboxOverlay = document.getElementById('lightbox-overlay');
+            const lightboxImage = document.getElementById('lightbox-image');
 
             let imagesToProcess = [];
 
@@ -352,6 +412,9 @@
             cameraInput.addEventListener('change', handleFileSelect);
             recognizeBtn.addEventListener('click', recognizeText);
             copyBtn.addEventListener('click', copyResultToClipboard);
+            lightboxOverlay.addEventListener('click', () => {
+                lightboxOverlay.style.display = 'none';
+            });
 
             function resetUI() {
                 imagesToProcess = [];
@@ -369,9 +432,13 @@
                 const files = event.target.files;
                 if (!files || files.length === 0) return;
 
-                resetUI();
+                const isCamera = event.target.id === 'camera-input';
+                // 如果是從資料夾選擇檔案，則清空現有預覽；如果是拍照，則不清空以實現疊加
+                if (!isCamera) {
+                    resetUI();
+                }
+
                 loadingIndicator.classList.add('visible');
-                
                 uploadPrompt.classList.add('hidden');
                 imageInputArea.classList.add('has-content');
                 imageInputArea.style.cursor = 'default';
@@ -383,8 +450,8 @@
                 if (pdfFile) {
                     if (fileList.length > 1) {
                          alert("PDF檔案請單獨上傳，不要與其他圖片混合。");
-                         resetUI();
                          loadingIndicator.classList.remove('visible');
+                         if (imagesToProcess.length === 0) resetUI(); // 如果之前沒東西，就重置
                          return;
                     }
                     loadingIndicator.textContent = '處理PDF中，請稍候…';
@@ -399,16 +466,16 @@
                 }
                 
                 try {
-                    imagesToProcess = (await Promise.all(processingPromises)).flat();
+                    const newImages = (await Promise.all(processingPromises)).flat();
+                    imagesToProcess.push(...newImages); // 將新處理好的圖片加入陣列
                     updatePreviews();
                 } catch(error) {
                     alert(`處理檔案時發生錯誤: ${error.message}`);
-                    resetUI();
+                    if (imagesToProcess.length === 0) resetUI();
                 } finally {
                     loadingIndicator.classList.remove('visible');
-                    if(imagesToProcess.length > 0) {
-                        recognizeBtn.disabled = false;
-                    }
+                    // 清空 input 的值，確保下次選擇同一個檔案仍能觸發 change 事件
+                    event.target.value = ''; 
                 }
             }
             
@@ -426,11 +493,38 @@
                     imgElement.src = base64;
                     imgElement.className = 'preview-image';
                     imgElement.alt = `預覽圖 ${index + 1}`;
+                    imgElement.addEventListener('click', () => {
+                        lightboxImage.src = base64;
+                        lightboxOverlay.style.display = 'flex';
+                    });
                     
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.title = '刪除此圖片';
+                    deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>`;
+                    deleteBtn.addEventListener('click', (event) => {
+                        event.stopPropagation(); // 防止觸發圖片放大
+                        imagesToProcess.splice(index, 1);
+                        updatePreviews(); // 重新渲染預覽
+                    });
+
                     itemDiv.appendChild(numberSpan);
                     itemDiv.appendChild(imgElement);
+                    itemDiv.appendChild(deleteBtn);
                     previewContainer.appendChild(itemDiv);
                 });
+
+                // 根據是否有圖片來更新 UI 狀態
+                if (imagesToProcess.length > 0) {
+                    recognizeBtn.disabled = false;
+                    uploadPrompt.classList.add('hidden');
+                    imageInputArea.classList.add('has-content');
+                } else {
+                    recognizeBtn.disabled = true;
+                    uploadPrompt.classList.remove('hidden');
+                    imageInputArea.classList.remove('has-content');
+                    imageInputArea.style.cursor = 'pointer';
+                }
             }
 
             function resizeImage(file, maxSize, quality) {
@@ -544,9 +638,7 @@
                     ocrResult.textContent = finalResultText || '未辨識到任何文字。';
                     resultContainer.classList.add('visible');
 
-                    // 檢查此視窗是否由其他視窗開啟 (確保 window.opener 存在)
                     if (window.opener) {
-                        // 將辨識結果透過 postMessage 傳送回開啟它的父視窗
                         window.opener.postMessage({
                             type: 'ocrResult',
                             text: finalResultText
