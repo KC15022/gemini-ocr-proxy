@@ -2,9 +2,9 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>手寫中文字OCR工具 | Gemini AI</title>
-    <meta name="description" content="上傳圖片或PDF，讓 AI 依序為您辨識文字。">
+    <meta name="description" content="上傳、拍照或掃描PDF，讓 AI 依序為您辨識文字。支援拖曳排序、點擊放大、單張刪除。">
 
     <!-- 引入字體 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,18 +14,18 @@
     <!-- 引入 PDF.js 函式庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script>
-        // 設定 PDF.js 的 worker 路徑
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
     </script>
 
     <style>
         :root {
-            --bg-color: #F5F3EF; /* 仿宣紙的米白 */
-            --text-color: #3D3B37; /* 墨色 */
-            --accent-color: #A39B8B; /* 枯木色 */
-            --border-color: #DCD6C8; /* 淺石色 */
+            --bg-color: #F5F3EF;
+            --text-color: #3D3B37;
+            --accent-color: #A39B8B;
+            --border-color: #DCD6C8;
+            --danger-color: #D9534F;
             --font-main: 'Noto Serif TC', serif;
-            --font-display: 'Noto Sans TC', sans-serif; /* 結果顯示字體 */
+            --font-display: 'Noto Sans TC', sans-serif;
         }
 
         body {
@@ -63,7 +63,6 @@
             font-weight: 700;
             letter-spacing: 0.2em;
             margin: 0 0 0.5rem 0.2em;
-            color: var(--text-color);
         }
 
         #subtitle {
@@ -81,7 +80,6 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
             transition: all 0.3s ease;
             overflow: hidden;
             box-sizing: border-box;
@@ -93,12 +91,10 @@
             border: 1px solid var(--border-color);
             background: none;
             padding: 1rem;
-            cursor: default;
         }
 
-        #image-input-area:hover:not(.has-content) {
-            border-color: var(--accent-color);
-        }
+        #image-input-area.clickable { cursor: pointer; }
+        #image-input-area.clickable:hover:not(.has-content) { border-color: var(--accent-color); }
 
         #preview-container {
             display: flex;
@@ -112,8 +108,17 @@
             position: relative;
             width: 150px;
             height: 150px;
+            cursor: grab;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
-        
+        .preview-item.is-dragging {
+            opacity: 0.5;
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            cursor: grabbing;
+        }
+        .preview-item:active { cursor: grabbing; }
+
         .preview-number {
             position: absolute;
             top: 0;
@@ -124,7 +129,7 @@
             font-size: 0.8rem;
             border-bottom-right-radius: 8px;
             font-family: var(--font-display);
-            z-index: 1;
+            z-index: 3;
         }
 
         .preview-image {
@@ -133,138 +138,157 @@
             object-fit: cover;
             border: 1px solid var(--border-color);
             border-radius: 4px;
-        }
-
-        #upload-prompt {
-            z-index: 2;
-            padding: 1rem;
-            transition: opacity 0.5s ease;
-        }
-        
-        #upload-prompt.hidden {
-            display: none;
-        }
-
-        .upload-icon {
-            width: 32px;
-            height: 32px;
-            margin-bottom: 0.5rem;
-            color: var(--accent-color);
-        }
-
-        #file-input, #camera-input {
-            display: none;
-        }
-        
-        #action-buttons {
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-top: 1.5rem;
-        }
-
-        .action-btn {
-            background: none;
-            border: 1px solid var(--border-color);
-            color: var(--accent-color);
-            padding: 10px 20px;
-            font-family: var(--font-main);
-            font-size: 0.9rem;
             cursor: pointer;
-            transition: all 0.3s ease;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 24px;
+            height: 24px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            justify-content: center;
+            padding: 0;
+            z-index: 4;
+            transition: background-color 0.2s;
         }
+        .delete-btn:hover { background-color: var(--danger-color); }
+        .delete-btn svg { width: 14px; height: 14px; }
 
-        .action-btn:hover:not(:disabled) {
-            background-color: var(--bg-color);
-            border-color: var(--accent-color);
-            color: var(--text-color);
-        }
 
-        .action-btn:disabled {
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
+        #upload-prompt { z-index: 2; padding: 1rem; transition: opacity 0.5s ease; }
+        #upload-prompt.hidden { display: none; }
+        .upload-icon { width: 32px; height: 32px; margin-bottom: 0.5rem; color: var(--accent-color); }
+
+        #file-input { display: none; }
         
-        #result-container {
-            margin-top: 2rem;
-            width: 100%;
-            min-height: 100px;
-            padding: 1.5rem;
-            box-sizing: border-box;
-            border-top: 1px solid var(--border-color);
-            text-align: left;
-            opacity: 0;
-            transition: opacity 1.5s ease;
-            background-color: rgba(255,255,255,0.4);
-            border-radius: 4px;
+        #action-buttons { display: flex; justify-content: center; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
+        .action-btn { background: none; border: 1px solid var(--border-color); color: var(--accent-color); padding: 10px 20px; font-family: var(--font-main); font-size: 0.9rem; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 0.5rem; }
+        .action-btn:hover:not(:disabled) { background-color: var(--bg-color); border-color: var(--accent-color); color: var(--text-color); }
+        .action-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+        
+        #result-container { margin-top: 2rem; width: 100%; min-height: 100px; padding: 1.5rem; box-sizing: border-box; border-top: 1px solid var(--border-color); text-align: left; opacity: 0; transition: opacity 1.5s ease; background-color: rgba(255,255,255,0.4); border-radius: 4px; display: none; position: relative; }
+        #result-container.visible { opacity: 1; display: block; }
+
+        #copy-btn { position: absolute; top: 1rem; right: 1rem; background: none; border: 1px solid transparent; color: var(--accent-color); cursor: pointer; padding: 5px; border-radius: 4px; transition: all 0.3s ease; z-index: 5; }
+        #copy-btn:hover { color: var(--text-color); background-color: rgba(0,0,0,0.05); }
+        
+        #ocr-result { font-family: var(--font-display); font-size: 1.1rem; line-height: 1.8; letter-spacing: 0.1em; white-space: pre-wrap; margin: 0; padding-right: 2.5rem; }
+        
+        #loading-indicator { display: none; width: 100%; text-align: center; padding: 2rem 0; font-size: 1rem; color: var(--accent-color); }
+        #loading-indicator.visible { display: block; animation: fadeInOut 2s infinite; }
+        
+        @keyframes fadeInOut { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+        /* --- 新增：相機介面樣式 --- */
+        #camera-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: #000;
+            z-index: 100;
             display: none;
-            position: relative;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
-        
-        #result-container.visible {
-            opacity: 1;
-            display: block;
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
-
-        #copy-btn {
+        #camera-focus-ring {
             position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: none;
-            border: 1px solid transparent;
-            color: var(--accent-color);
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-            z-index: 5;
+            width: 60px;
+            height: 60px;
+            border: 2px solid white;
+            border-radius: 50%;
+            opacity: 0;
+            transform: scale(1.5);
+            transition: opacity 0.3s ease, transform 0.3s ease;
         }
-
-        #copy-btn:hover {
-            color: var(--text-color);
-            background-color: rgba(0,0,0,0.05);
+        #camera-focus-ring.visible {
+            opacity: 1;
+            transform: scale(1);
         }
-        
-        #ocr-result {
-            font-family: var(--font-display);
-            font-size: 1.1rem;
-            font-weight: 400;
-            line-height: 1.8;
-            letter-spacing: 0.1em;
-            color: var(--text-color);
-            white-space: pre-wrap;
-            margin: 0;
-            padding-right: 2.5rem;
-        }
-        
-        #loading-indicator {
-            display: none;
+        #camera-controls {
+            position: absolute;
+            bottom: 0; left: 0;
             width: 100%;
-            text-align: center;
-            padding: 2rem 0;
+            padding: 20px;
+            box-sizing: border-box;
+            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        #capture-btn {
+            width: 70px; height: 70px;
+            border-radius: 50%;
+            background-color: #fff;
+            border: 5px solid #fff;
+            box-shadow: 0 0 0 3px rgba(0,0,0,0.5);
+            cursor: pointer;
+            outline: none;
+        }
+        .camera-action-btn {
+            font-family: var(--font-display);
+            background-color: rgba(255, 255, 255, 0.9);
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
             font-size: 1rem;
-            color: var(--accent-color);
+        }
+        #close-camera-btn {
+            position: absolute;
+            top: 20px; right: 20px;
+            width: 40px; height: 40px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none; border-radius: 50%;
+            font-size: 24px;
+            line-height: 40px;
+            cursor: pointer;
         }
 
-        #loading-indicator.visible {
-            display: block;
-            animation: fadeInOut 2s infinite;
-        }
-        
-        @keyframes fadeInOut {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 1; }
+        #camera-preview {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: contain;
+            background-color: #000;
         }
 
-        .copyright-footer {
-            margin-top: 2rem;
-            font-size: 14px;
-            color: var(--accent-color);
+        /* --- 新增：全螢幕預覽樣式 --- */
+        #fullscreen-preview {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            z-index: 110;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
         }
+        #fullscreen-preview img {
+            max-width: 95%;
+            max-height: 95%;
+            object-fit: contain;
+        }
+
+        .copyright-footer { margin-top: 2rem; font-size: 14px; color: var(--accent-color); }
 
         @media (max-width: 600px) {
             body { padding: 1rem; }
@@ -280,10 +304,10 @@
 
     <div id="container">
         <h1>手寫中文字辨識</h1>
-        <p id="subtitle">上傳圖片或 PDF，AI 將為您辨識內容。</p>
+        <p id="subtitle">上傳、拍照或掃描PDF，AI 將為您辨識內容。</p>
 
         <!-- 檔案上傳區域 -->
-        <div id="image-input-area">
+        <div id="image-input-area" class="clickable">
             <div id="preview-container"></div>
             <div id="upload-prompt">
                 <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -294,7 +318,6 @@
         </div>
         
         <input type="file" id="file-input" accept="image/*,application/pdf" multiple>
-        <input type="file" id="camera-input" accept="image/*" capture="environment">
 
         <!-- 操作按鈕 -->
         <div id="action-buttons">
@@ -324,15 +347,41 @@
         <div id="loading-indicator">辨識中…</div>
     </div>
 
+    <!-- 新增：相機介面 -->
+    <div id="camera-overlay">
+        <video id="camera-video" playsinline autoplay></video>
+        <div id="camera-focus-ring"></div>
+        <img id="camera-preview" style="display: none;">
+        <canvas id="camera-canvas" style="display: none;"></canvas>
+        <button id="close-camera-btn">&times;</button>
+        <div id="camera-controls">
+            <!-- 拍照模式 -->
+            <div id="capture-mode">
+                <button id="capture-btn"></button>
+            </div>
+            <!-- 預覽模式 -->
+            <div id="preview-mode" style="display: none;">
+                <button id="retake-btn" class="camera-action-btn">重拍</button>
+                <button id="continue-btn" class="camera-action-btn">繼續拍照</button>
+                <button id="finish-camera-btn" class="camera-action-btn">完成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增：全螢幕圖片預覽 -->
+    <div id="fullscreen-preview">
+        <img id="fullscreen-image" src="" alt="全螢幕預覽">
+    </div>
+
     <footer class="copyright-footer">
         <p>Copyright © 2025 陳冠健. All rights reserved.</p>
     </footer>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM 元素宣告 ---
             const imageInputArea = document.getElementById('image-input-area');
             const fileInput = document.getElementById('file-input');
-            const cameraInput = document.getElementById('camera-input');
             const cameraBtn = document.getElementById('camera-btn');
             const recognizeBtn = document.getElementById('recognize-btn');
             const previewContainer = document.getElementById('preview-container');
@@ -344,49 +393,135 @@
             const copyBtnText = document.getElementById('copy-btn-text');
             const copyIcon = document.getElementById('copy-icon');
 
-            let imagesToProcess = [];
+            // --- 相機相關 DOM ---
+            const cameraOverlay = document.getElementById('camera-overlay');
+            const cameraVideo = document.getElementById('camera-video');
+            const cameraCanvas = document.getElementById('camera-canvas');
+            const cameraPreview = document.getElementById('camera-preview');
+            const closeCameraBtn = document.getElementById('close-camera-btn');
+            const captureBtn = document.getElementById('capture-btn');
+            const retakeBtn = document.getElementById('retake-btn');
+            const continueBtn = document.getElementById('continue-btn');
+            const finishCameraBtn = document.getElementById('finish-camera-btn');
+            const captureModeControls = document.getElementById('capture-mode');
+            const previewModeControls = document.getElementById('preview-mode');
+            const cameraFocusRing = document.getElementById('camera-focus-ring');
 
+            // --- 全螢幕預覽 DOM ---
+            const fullscreenPreview = document.getElementById('fullscreen-preview');
+            const fullscreenImage = document.getElementById('fullscreen-image');
+            
+            let imagesToProcess = [];
+            let stream = null; // 用於儲存相機串流
+
+            // --- 事件監聽 ---
             imageInputArea.addEventListener('click', () => fileInput.click());
-            cameraBtn.addEventListener('click', () => cameraInput.click());
             fileInput.addEventListener('change', handleFileSelect);
-            cameraInput.addEventListener('change', handleFileSelect);
             recognizeBtn.addEventListener('click', recognizeText);
             copyBtn.addEventListener('click', copyResultToClipboard);
 
+            // --- 相機事件 ---
+            cameraBtn.addEventListener('click', openCamera);
+            closeCameraBtn.addEventListener('click', closeCamera);
+            captureBtn.addEventListener('click', capturePhoto);
+            retakeBtn.addEventListener('click', retakePhoto);
+            continueBtn.addEventListener('click', continueShooting);
+            finishCameraBtn.addEventListener('click', finishShooting);
+            cameraVideo.addEventListener('click', focusCamera);
+
+            // --- 全螢幕預覽事件 ---
+            fullscreenPreview.addEventListener('click', () => fullscreenPreview.style.display = 'none');
+
+            // --- 拖曳排序事件 ---
+            let draggedItem = null;
+            previewContainer.addEventListener('dragstart', (e) => {
+                draggedItem = e.target.closest('.preview-item');
+                setTimeout(() => {
+                    draggedItem.classList.add('is-dragging');
+                }, 0);
+            });
+
+            previewContainer.addEventListener('dragend', (e) => {
+                if(draggedItem) {
+                    draggedItem.classList.remove('is-dragging');
+                    draggedItem = null;
+                }
+            });
+
+            previewContainer.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const afterElement = getDragAfterElement(previewContainer, e.clientY);
+                const dragging = document.querySelector('.is-dragging');
+                if (afterElement == null) {
+                    previewContainer.appendChild(dragging);
+                } else {
+                    previewContainer.insertBefore(dragging, afterElement);
+                }
+            });
+
+            previewContainer.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const newOrder = Array.from(previewContainer.querySelectorAll('.preview-item')).map(item => {
+                    const index = parseInt(item.dataset.index, 10);
+                    return imagesToProcess[index];
+                });
+                imagesToProcess = newOrder;
+                updatePreviews();
+            });
+
+            function getDragAfterElement(container, y) {
+                const draggableElements = [...container.querySelectorAll('.preview-item:not(.is-dragging)')];
+                return draggableElements.reduce((closest, child) => {
+                    const box = child.getBoundingClientRect();
+                    const offset = y - box.top - box.height / 2;
+                    if (offset < 0 && offset > closest.offset) {
+                        return { offset: offset, element: child };
+                    } else {
+                        return closest;
+                    }
+                }, { offset: Number.NEGATIVE_INFINITY }).element;
+            }
+
+
+            // --- UI & 核心功能函式 ---
+
             function resetUI() {
                 imagesToProcess = [];
-                previewContainer.innerHTML = '';
+                updatePreviews();
                 resultContainer.classList.remove('visible');
                 ocrResult.textContent = '';
-                recognizeBtn.disabled = true;
                 recognizeBtn.textContent = '開始辨識';
-                uploadPrompt.classList.remove('hidden');
-                imageInputArea.classList.remove('has-content');
-                imageInputArea.style.cursor = 'pointer';
+            }
+            
+            function updateUIState() {
+                const hasImages = imagesToProcess.length > 0;
+                recognizeBtn.disabled = !hasImages;
+                uploadPrompt.classList.toggle('hidden', hasImages);
+                imageInputArea.classList.toggle('has-content', hasImages);
+                imageInputArea.classList.toggle('clickable', !hasImages);
             }
 
             async function handleFileSelect(event) {
                 const files = event.target.files;
                 if (!files || files.length === 0) return;
 
-                resetUI();
-                loadingIndicator.classList.add('visible');
+                // 不完全重置，允許繼續添加
+                // resetUI(); 
                 
-                uploadPrompt.classList.add('hidden');
-                imageInputArea.classList.add('has-content');
-                imageInputArea.style.cursor = 'default';
+                loadingIndicator.classList.add('visible');
+                updateUIState();
 
                 const fileList = Array.from(files);
                 let processingPromises = [];
 
                 const pdfFile = fileList.find(f => f.type === 'application/pdf');
                 if (pdfFile) {
-                    if (fileList.length > 1) {
-                         alert("PDF檔案請單獨上傳，不要與其他圖片混合。");
-                         resetUI();
+                    if (fileList.length > 1 || imagesToProcess.length > 0) {
+                         alert("PDF檔案請單獨處理，請先清空現有圖片再上傳。");
                          loadingIndicator.classList.remove('visible');
                          return;
                     }
+                    resetUI();
                     loadingIndicator.textContent = '處理PDF中，請稍候…';
                     processingPromises.push(handlePdfFile(pdfFile));
                 } else {
@@ -399,17 +534,18 @@
                 }
                 
                 try {
-                    imagesToProcess = (await Promise.all(processingPromises)).flat();
+                    const newImages = (await Promise.all(processingPromises)).flat();
+                    imagesToProcess.push(...newImages);
                     updatePreviews();
                 } catch(error) {
                     alert(`處理檔案時發生錯誤: ${error.message}`);
-                    resetUI();
                 } finally {
                     loadingIndicator.classList.remove('visible');
-                    if(imagesToProcess.length > 0) {
-                        recognizeBtn.disabled = false;
-                    }
+                    loadingIndicator.textContent = '辨識中...';
+                    updateUIState();
                 }
+                 // 清空 file input 的值，確保下次選擇相同檔案仍會觸發 change 事件
+                event.target.value = '';
             }
             
             function updatePreviews() {
@@ -417,6 +553,8 @@
                 imagesToProcess.forEach((base64, index) => {
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'preview-item';
+                    itemDiv.draggable = true;
+                    itemDiv.dataset.index = index; // 儲存原始索引
 
                     const numberSpan = document.createElement('span');
                     numberSpan.className = 'preview-number';
@@ -426,13 +564,134 @@
                     imgElement.src = base64;
                     imgElement.className = 'preview-image';
                     imgElement.alt = `預覽圖 ${index + 1}`;
+                    imgElement.addEventListener('click', (e) => {
+                        e.stopPropagation(); // 防止觸發拖曳
+                        showFullscreenPreview(base64);
+                    });
+
+                    const deleteButton = document.createElement('button');
+                    deleteButton.className = 'delete-btn';
+                    deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>`;
+                    deleteButton.title = "刪除此圖片";
+                    deleteButton.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        imagesToProcess.splice(index, 1);
+                        updatePreviews();
+                    });
                     
                     itemDiv.appendChild(numberSpan);
                     itemDiv.appendChild(imgElement);
+                    itemDiv.appendChild(deleteButton);
                     previewContainer.appendChild(itemDiv);
                 });
+                updateUIState();
             }
 
+            // --- 新增：相機功能函式 ---
+
+            async function openCamera() {
+                if (stream) { // 如果已有串流，先關閉
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment' } // 優先使用後置鏡頭
+                    });
+                    cameraVideo.srcObject = stream;
+                    cameraOverlay.style.display = 'flex';
+                    document.body.style.overflow = 'hidden'; // 禁止背景滾動
+                    switchToCaptureMode();
+                } catch (err) {
+                    console.error("無法取得相機權限:", err);
+                    alert("無法啟動相機。請檢查瀏覽器權限設定。");
+                }
+            }
+
+            function closeCamera() {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+                cameraOverlay.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+            
+            function focusCamera(event) {
+                // 顯示視覺對焦環
+                const rect = cameraVideo.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                cameraFocusRing.style.left = `${x - 30}px`;
+                cameraFocusRing.style.top = `${y - 30}px`;
+                cameraFocusRing.classList.add('visible');
+                setTimeout(() => cameraFocusRing.classList.remove('visible'), 600);
+                
+                // 嘗試觸發瀏覽器內建對焦
+                // 這是最佳實踐，具體效果由瀏覽器和設備決定
+                if ('focusMode' in stream.getVideoTracks()[0].getCapabilities()) {
+                    try {
+                        stream.getVideoTracks()[0].applyConstraints({
+                           advanced: [{ focusMode: "continuous" }]
+                        });
+                    } catch (err) {
+                        console.warn("套用對焦模式失敗:", err);
+                    }
+                }
+            }
+
+
+            function capturePhoto() {
+                const videoWidth = cameraVideo.videoWidth;
+                const videoHeight = cameraVideo.videoHeight;
+                cameraCanvas.width = videoWidth;
+                cameraCanvas.height = videoHeight;
+                const context = cameraCanvas.getContext('2d');
+                context.drawImage(cameraVideo, 0, 0, videoWidth, videoHeight);
+                const dataUrl = cameraCanvas.toDataURL('image/jpeg', 0.9);
+                cameraPreview.src = dataUrl;
+                switchToPreviewMode();
+            }
+
+            function retakePhoto() {
+                switchToCaptureMode();
+            }
+
+            function continueShooting() {
+                imagesToProcess.push(cameraPreview.src);
+                updatePreviews();
+                switchToCaptureMode();
+            }
+
+            function finishShooting() {
+                imagesToProcess.push(cameraPreview.src);
+                updatePreviews();
+                closeCamera();
+            }
+
+            function switchToCaptureMode() {
+                cameraPreview.style.display = 'none';
+                cameraVideo.style.display = 'block';
+                captureModeControls.style.display = 'block';
+                previewModeControls.style.display = 'none';
+                if(stream) cameraVideo.play();
+            }
+            
+            function switchToPreviewMode() {
+                cameraVideo.pause();
+                cameraVideo.style.display = 'none';
+                cameraPreview.style.display = 'block';
+                captureModeControls.style.display = 'none';
+                previewModeControls.style.display = 'flex';
+            }
+
+            // --- 新增：全螢幕預覽函式 ---
+            function showFullscreenPreview(base64) {
+                fullscreenImage.src = base64;
+                fullscreenPreview.style.display = 'flex';
+            }
+
+            // --- 既有輔助函式 (保持不變或微調) ---
             function resizeImage(file, maxSize, quality) {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
@@ -468,7 +727,7 @@
                             const pdfData = new Uint8Array(e.target.result);
                             const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
                             const numPages = pdf.numPages;
-                            let pagePromises = [];
+                            let pageImages = [];
 
                             for (let i = 1; i <= numPages; i++) {
                                 loadingIndicator.textContent = `處理PDF中 (${i}/${numPages}頁)...`;
@@ -478,11 +737,10 @@
                                 const context = canvas.getContext('2d');
                                 canvas.height = viewport.height;
                                 canvas.width = viewport.width;
-
                                 await page.render({ canvasContext: context, viewport: viewport }).promise;
-                                pagePromises.push(canvas.toDataURL('image/jpeg', 0.9));
+                                pageImages.push(canvas.toDataURL('image/jpeg', 0.9));
                             }
-                            resolve(pagePromises);
+                            resolve(pageImages);
                         } catch (error) {
                             console.error('處理PDF時發生錯誤:', error);
                             reject(new Error(`處理PDF失敗: ${error.message}`));
@@ -540,17 +798,11 @@
                     }
                     
                     const finalResultText = allRecognizedText.join('\n\n').trim();
-                    
                     ocrResult.textContent = finalResultText || '未辨識到任何文字。';
                     resultContainer.classList.add('visible');
 
-                    // 檢查此視窗是否由其他視窗開啟 (確保 window.opener 存在)
                     if (window.opener) {
-                        // 將辨識結果透過 postMessage 傳送回開啟它的父視窗
-                        window.opener.postMessage({
-                            type: 'ocrResult',
-                            text: finalResultText
-                        }, '*'); 
+                        window.opener.postMessage({ type: 'ocrResult', text: finalResultText }, '*'); 
                     }
 
                 } catch (error) {
